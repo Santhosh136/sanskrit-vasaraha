@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>वासरः</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* Very light slate */
+            color: #334155;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .snap-x-mandatory {
+            scroll-snap-type: x mandatory;
+        }
+        .snap-center-item {
+            scroll-snap-align: center;
+        }
+
+        /* Smooth transition for selection */
+        .day-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4 md:py-16">
+
+    <div class="w-full max-w-5xl flex flex-col gap-10">
+        
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800 tracking-tight">वासरः</h1>
+            <p class="text-slate-500 text-sm md:text-base">Select a day below to set it as <span class="font-semibold text-indigo-600">Today</span></p>
+        </div>
+
+        <!-- Top Day Selection Carousel -->
+        <div class="relative w-full overflow-hidden flex flex-col items-center">
+            <div id="carousel-container" class="w-full overflow-x-auto no-scrollbar snap-x-mandatory flex relative z-10 py-6" style="padding-left: calc(50% - 70px); padding-right: calc(50% - 70px); touch-action: pan-x;">
+                <div id="carousel-track" class="flex flex-row gap-4 shrink-0 mx-auto">
+                    <!-- Carousel items will be injected here by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Relative Days Display Area (Table Format) -->
+        <div class="w-full flex justify-center mt-2 px-0 relative z-0">
+            <div id="table-scroll-area" class="w-full max-w-5xl overflow-x-auto no-scrollbar pb-8 px-4 md:px-6" style="touch-action: pan-x;">
+                <div id="relative-days-container" class="min-w-[700px] md:min-w-[750px] w-full grid grid-cols-7 bg-white border border-slate-200 rounded-xl shadow-sm divide-x divide-slate-200 overflow-hidden relative mx-auto">
+                    <!-- Relative day columns will be injected here by JS -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Data arrays
+        const days = [
+            { en: 'Sunday', ta: 'ஞாயிறு', saPrimary: 'रविवासरः', saAlt: 'भानुवासरः' },
+            { en: 'Monday', ta: 'திங்கள்', saPrimary: 'सोमवासरः', saAlt: 'इन्दुवासरः' },
+            { en: 'Tuesday', ta: 'செவ்வாய்', saPrimary: 'मङ्गलवासरः', saAlt: 'भौमवासरः' },
+            { en: 'Wednesday', ta: 'புதன்', saPrimary: 'बुधवासरः', saAlt: 'सौम्यवासरः' },
+            { en: 'Thursday', ta: 'வியாழன்', saPrimary: 'गुरुवासरः', saAlt: 'बृहस्पतिवासरः' },
+            { en: 'Friday', ta: 'வெள்ளி', saPrimary: 'शुक्रवासरः', saAlt: 'भृगुवासरः' },
+            { en: 'Saturday', ta: 'சனி', saPrimary: 'शनिवासरः', saAlt: 'स्थिरवासरः' }
+        ];
+
+        const relativeLabels = [
+            { offset: -3, sa: 'प्रपरह्यः', ta: '-', en: '-' },
+            { offset: -2, sa: 'परह्यः', ta: 'நேற்று முன்தினம்', en: 'Day before yesterday' },
+            { offset: -1, sa: 'ह्यः', ta: 'நேற்று', en: 'Yesterday' },
+            { offset: 0, sa: 'अद्य', ta: 'இன்று', en: 'Today', isToday: true },
+            { offset: 1, sa: 'श्वः', ta: 'நாளை', en: 'Tomorrow' },
+            { offset: 2, sa: 'परश्वः', ta: 'நாளை மறுநாள்', en: 'Day after tomorrow' },
+            { offset: 3, sa: 'प्रपरश्वः', ta: '-', en: '-' }
+        ];
+
+        let currentDayIndex = 3; // Default to Wednesday
+        let isProgrammaticScroll = false;
+        let scrollTimeout;
+
+        function renderCarousel() {
+            const track = document.getElementById('carousel-track');
+            track.innerHTML = '';
+
+            days.forEach((day, index) => {
+                const card = document.createElement('div');
+                card.id = `day-card-${index}`;
+                card.className = `day-card snap-center-item shrink-0 w-[140px] p-4 rounded-2xl cursor-pointer select-none border-2 flex flex-col items-center justify-center bg-white shadow-sm hover:shadow-md`;
+                
+                card.innerHTML = `
+                    <div class="text-indigo-900 font-bold text-lg">${day.en}</div>
+                    <div class="text-slate-500 text-sm mt-1">${day.ta}</div>
+                    <div class="text-slate-700 font-semibold mt-3 text-base">${day.saPrimary}</div>
+                `;
+
+                card.onclick = () => {
+                    isProgrammaticScroll = true;
+                    setDay(index);
+                    centerCarouselItem(index);
+                    // allow time for scroll animation before re-enabling scroll listener
+                    setTimeout(() => isProgrammaticScroll = false, 600); 
+                };
+
+                track.appendChild(card);
+            });
+            
+            updateCarouselStyles();
+        }
+
+        function updateCarouselStyles() {
+            days.forEach((_, index) => {
+                const card = document.getElementById(`day-card-${index}`);
+                if (index === currentDayIndex) {
+                    // Active state
+                    card.classList.remove('border-transparent', 'border-slate-100', 'opacity-60', 'scale-95');
+                    card.classList.add('border-indigo-500', 'bg-indigo-50/50', 'scale-105', 'shadow-md', 'ring-4', 'ring-indigo-500/10');
+                } else {
+                    // Inactive state
+                    card.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'scale-105', 'shadow-md', 'ring-4', 'ring-indigo-500/10');
+                    card.classList.add('border-slate-100', 'opacity-60', 'scale-95');
+                }
+            });
+        }
+
+        function renderRelativeDays() {
+            const container = document.getElementById('relative-days-container');
+            container.innerHTML = '';
+
+            relativeLabels.forEach(label => {
+                // Calculate the corresponding day
+                let calcIndex = (((currentDayIndex + label.offset) % 7) + 7) % 7; 
+                const targetDay = days[calcIndex];
+
+                const isToday = label.isToday;
+                
+                // Table Cell Styling
+                const columnClasses = isToday 
+                    ? 'bg-indigo-50 ring-2 ring-indigo-400 z-10 shadow-sm relative' 
+                    : 'bg-transparent hover:bg-slate-50 transition-colors';
+                
+                const textSaClass = isToday ? 'text-indigo-700' : 'text-slate-800';
+
+                // Format the output strings
+                const displayEn = label.en !== '-' ? label.en : '';
+                const displayTa = label.ta !== '-' ? label.ta : '';
+                const emptyState = label.en === '-' ? '<div class="h-px w-3 bg-slate-300 mx-auto my-2"></div>' : '';
+
+                container.innerHTML += `
+                    <div class="flex flex-col py-3 px-1 md:py-4 md:px-2 items-center text-center ${columnClasses}">
+                        <!-- Top Half: Relative Term -->
+                        <div class="h-[72px] flex flex-col justify-start items-center w-full px-1">
+                            <span class="text-[12px] md:text-[13px] font-semibold ${textSaClass}">${label.sa}</span>
+                            ${displayTa ? `<span class="text-[10px] font-medium mt-1.5 text-slate-600 leading-tight">${displayTa}</span>` : ''}
+                            ${displayEn ? `<span class="text-[9px] font-medium tracking-wide uppercase mt-1 text-slate-400 leading-tight">${displayEn}</span>` : emptyState}
+                        </div>
+                        
+                        <!-- Divider -->
+                        <div class="w-full h-px ${isToday ? 'bg-indigo-200' : 'bg-slate-100'} my-2"></div>
+
+                        <!-- Bottom Half: Actual Day -->
+                        <div class="h-[60px] flex flex-col justify-end items-center w-full px-1">
+                            <span class="text-[10px] md:text-[11px] font-semibold ${isToday ? 'text-indigo-900' : 'text-slate-700'}">${targetDay.en}</span>
+                            <span class="text-[9px] md:text-[10px] mt-0.5 ${isToday ? 'text-indigo-600' : 'text-slate-500'}">${targetDay.ta}</span>
+                            <span class="text-[10px] md:text-[11px] font-bold mt-1 ${isToday ? 'text-indigo-800' : 'text-slate-800'}">${targetDay.saAlt}</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Center the table on mobile automatically
+            setTimeout(() => {
+                const scrollArea = document.getElementById('table-scroll-area');
+                if(scrollArea && scrollArea.scrollWidth > scrollArea.clientWidth) {
+                    scrollArea.scrollTo({
+                        left: (scrollArea.scrollWidth / 2) - (scrollArea.clientWidth / 2),
+                        behavior: 'smooth'
+                    });
+                }
+            }, 100);
+        }
+
+        function setDay(index) {
+            if (currentDayIndex !== index) {
+                currentDayIndex = index;
+                updateCarouselStyles();
+                renderRelativeDays();
+            }
+        }
+
+        function centerCarouselItem(index) {
+            const container = document.getElementById('carousel-container');
+            const item = document.getElementById(`day-card-${index}`);
+            if (item && container) {
+                // Calculate scroll position to center the item
+                const scrollLeft = item.offsetLeft - (container.clientWidth / 2) + (item.offsetWidth / 2);
+                container.scrollTo({
+                    left: scrollLeft,
+                    behavior: 'smooth'
+                });
+            }
+        }
+
+        function setupScrollListener() {
+            const container = document.getElementById('carousel-container');
+            
+            container.addEventListener('scroll', () => {
+                if (isProgrammaticScroll) return; 
+
+                clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(() => {
+                    const containerCenter = container.scrollLeft + (container.clientWidth / 2);
+                    const items = document.querySelectorAll('.day-card');
+                    
+                    let closestIndex = 0;
+                    let minDistance = Infinity;
+
+                    items.forEach((item, index) => {
+                        const itemCenter = item.offsetLeft + (item.offsetWidth / 2);
+                        const distance = Math.abs(containerCenter - itemCenter);
+                        
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestIndex = index;
+                        }
+                    });
+
+                    // Snap update threshold
+                    if (minDistance < 80) {
+                        setDay(closestIndex);
+                    }
+                }, 100); // Small debounce for smooth scrolling updates
+            });
+        }
+
+        function initApp() {
+            renderCarousel();
+            renderRelativeDays();
+            setupScrollListener();
+            
+            // Center the initial day after DOM is fully painted
+            setTimeout(() => {
+                centerCarouselItem(currentDayIndex);
+            }, 100);
+        }
+
+        // Boot
+        window.addEventListener('DOMContentLoaded', initApp);
+
+        // Handle Resizing to keep things centered
+        window.addEventListener('resize', () => {
+            clearTimeout(window.resizeTimer);
+            window.resizeTimer = setTimeout(() => {
+                centerCarouselItem(currentDayIndex);
+            }, 100);
+        });
+    </script>
+</body>
+</html>
